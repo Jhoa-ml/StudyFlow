@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../widgets/tarjeta_frase.dart';
 import '../models/usuario.dart';
 import '../models/tarea.dart';
 
@@ -98,8 +99,9 @@ class _InicioScreenState extends State<InicioScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // SALUDO
             Text(
-              'Hola, ${widget.usuario.nombre} 👋',
+              'Hola, ${widget.usuario.nombre} ',
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
             ),
 
@@ -110,8 +112,14 @@ class _InicioScreenState extends State<InicioScreen> {
               style: TextStyle(color: Colors.white60, fontSize: 15),
             ),
 
+            const SizedBox(height: 20),
+
+            // FRASE MOTIVACIONAL
+            const TarjetaFraseMotivacional(),
+
             const SizedBox(height: 25),
 
+            // ESTADÍSTICAS
             Row(
               children: [
                 Expanded(
@@ -136,6 +144,7 @@ class _InicioScreenState extends State<InicioScreen> {
 
             const SizedBox(height: 30),
 
+            // PRÓXIMAS TAREAS
             const Text(
               'Próximas tareas',
               style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),

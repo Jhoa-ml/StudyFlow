@@ -1,63 +1,40 @@
 class Tarea {
-  final int? id;
+  final String id;
   final String titulo;
   final String materia;
   final String fecha;
   final String prioridad;
   final bool completada;
-  final int? usuarioId;
 
   Tarea({
-    this.id,
+    this.id = '',
     required this.titulo,
     required this.materia,
     required this.fecha,
     required this.prioridad,
     this.completada = false,
-    this.usuarioId,
   });
 
-  factory Tarea.fromMap(Map<String, dynamic> map) {
+  // Constructor flexible: acepta Tarea.fromMap(data) o Tarea.fromMap(data, id)
+  factory Tarea.fromMap(Map<String, dynamic> map, [String docId = '']) {
     return Tarea(
-      id: map['id'] as int?,
-      titulo: map['titulo'] as String,
-      materia: map['materia'] as String,
-      fecha: map['fecha'] as String,
-      prioridad: map['prioridad'] as String,
-      completada: map['completada'] == 1,
-      usuarioId: map['usuario_id'] as int?,
+      id: docId.isNotEmpty ? docId : (map['id']?.toString() ?? ''),
+      titulo: map['titulo'] ?? map['nombre'] ?? 'Sin título',
+      materia: map['materia'] ?? 'General',
+      fecha: map['fechaEntrega']?.toString() ?? map['fecha']?.toString() ?? '',
+      prioridad: map['prioridad'] ?? 'Media',
+      completada: map['completada'] ?? map['completado'] ?? false,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toMap(String usuarioUid) {
     return {
-      'id': id,
+      'usuarioId': usuarioUid,
       'titulo': titulo,
       'materia': materia,
-      'fecha': fecha,
+      'fechaEntrega': fecha,
       'prioridad': prioridad,
-      'completada': completada ? 1 : 0,
-      'usuario_id': usuarioId,
+      'completada': completada,
     };
-  }
-
-  Tarea copyWith({
-    int? id,
-    String? titulo,
-    String? materia,
-    String? fecha,
-    String? prioridad,
-    bool? completada,
-    int? usuarioId,
-  }) {
-    return Tarea(
-      id: id ?? this.id,
-      titulo: titulo ?? this.titulo,
-      materia: materia ?? this.materia,
-      fecha: fecha ?? this.fecha,
-      prioridad: prioridad ?? this.prioridad,
-      completada: completada ?? this.completada,
-      usuarioId: usuarioId ?? this.usuarioId,
-    );
   }
 }
