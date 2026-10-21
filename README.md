@@ -1,6 +1,6 @@
 ﻿# Pruebas de StudyFlow v1.0.0
 
-## Periodo y participantes
+## Periodo 
 
 * **Fecha límite para registrar hallazgos:** 25 de octubre de 2026 a las 23:59, hora de Ciudad de México.
 * **Testers:** David, Belem y Brayan.
@@ -25,4 +25,4 @@ Cada tester escribe sus resultados en su propio README, en la rama `main`:
 
 Por cada hallazgo, anota fecha, dispositivo y versión de Android. En **Hallazgo**, explica los pasos, lo que esperabas y lo que sucedió. En **Estado**, escribe `Reportado`. Solo edita tu propio archivo para evitar conflictos con los registros de los demás.
 
-No es obligatorio crear un issue. Si lo haces, agrega el enlace en la columna Issue (opcional); si no, deja `-`. El issue general de pruebas también permanece abierto para preguntas. No publiques contraseñas, correos de uso personal, códigos de acceso ni capturas con datos personales.
+
