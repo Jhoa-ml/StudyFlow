@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 import '../models/usuario.dart';
 import 'admin.dart';
@@ -51,7 +52,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Iniciar sesión mediante Firebase Authentication.
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: correo,
         password: password,
@@ -63,7 +63,6 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('No se pudo obtener el usuario de Firebase');
       }
 
-      // Buscar los datos del usuario en Firestore.
       final documento = await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(firebaseUser.uid)
@@ -94,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
         password: '',
         rol: rol,
       );
-      // Actualizar último acceso.
+
       await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(firebaseUser.uid)
@@ -104,18 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Revisar el rol guardado en Firestore.
-      if (rol == 'administrador') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AdminScreen(usuario: usuario)),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => UserMainScreen(usuario: usuario)),
-        );
-      }
+      _navegarSegunRol(rol, usuario);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
 
@@ -168,14 +156,11 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Cerrar una sesión anterior de Google.
       await GoogleSignIn.instance.signOut();
 
-      // Iniciar autenticación con Google.
       final GoogleSignInAccount googleUser = await GoogleSignIn.instance
           .authenticate();
 
-      // Obtener autenticación de Google.
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
       final idToken = googleAuth.idToken;
@@ -184,10 +169,8 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('No se obtuvo el ID Token de Google');
       }
 
-      // Crear credencial para Firebase.
       final credential = GoogleAuthProvider.credential(idToken: idToken);
 
-      // Iniciar sesión en Firebase.
       final userCredential = await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
@@ -198,86 +181,12 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('No se pudo obtener el usuario de Firebase');
       }
 
-      // ==========================================================
-      // BUSCAR O CREAR PERFIL EN FIRESTORE
-      // ==========================================================
-
-      final referencia = FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(firebaseUser.uid);
-
-      final documento = await referencia.get();
-
-      String nombre;
-      String correo;
-      String rol;
-
-      if (documento.exists) {
-        final datos = documento.data()!;
-
-        nombre =
-            datos['nombre']?.toString() ??
-            firebaseUser.displayName ??
-            googleUser.displayName ??
-            'Usuario';
-
-        correo =
-            datos['correo']?.toString() ??
-            firebaseUser.email ??
-            googleUser.email;
-
-        rol = datos['rol']?.toString() ?? 'usuario';
-
-        // Actualizar información del usuario.
-        await referencia.set({
-          'uid': firebaseUser.uid,
-          'nombre': nombre,
-          'correo': correo,
-          'foto': firebaseUser.photoURL ?? googleUser.photoUrl,
-          'ultimoAcceso': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } else {
-        // Primer inicio de sesión con Google.
-        nombre =
-            firebaseUser.displayName ?? googleUser.displayName ?? 'Usuario';
-
-        correo = firebaseUser.email ?? googleUser.email;
-
-        rol = 'usuario';
-
-        await referencia.set({
-          'uid': firebaseUser.uid,
-          'nombre': nombre,
-          'correo': correo,
-          'foto': firebaseUser.photoURL ?? googleUser.photoUrl,
-          'rol': rol,
-          'fechaRegistro': FieldValue.serverTimestamp(),
-          'ultimoAcceso': FieldValue.serverTimestamp(),
-        });
-      }
-
-      if (!mounted) return;
-
-      final usuario = Usuario(
-        uid: firebaseUser.uid,
-        nombre: nombre,
-        correo: correo,
-        password: '',
-        rol: rol,
+      await _procesarUsuarioSocial(
+        firebaseUser: firebaseUser,
+        nombreFallback: googleUser.displayName,
+        correoFallback: googleUser.email,
+        fotoFallback: googleUser.photoUrl,
       );
-
-      // Enviar al panel correspondiente según Firestore.
-      if (rol == 'administrador') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AdminScreen(usuario: usuario)),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => UserMainScreen(usuario: usuario)),
-        );
-      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
 
@@ -296,6 +205,167 @@ class _LoginScreenState extends State<LoginScreen> {
           cargando = false;
         });
       }
+    }
+  }
+
+  // ============================================================
+  // LOGIN CON FACEBOOK
+  // ============================================================
+
+  Future<void> iniciarSesionFacebook() async {
+    setState(() {
+      cargando = true;
+    });
+
+    try {
+      // 1. Cerrar cualquier sesión previa de Facebook
+      await FacebookAuth.instance.logOut();
+
+      // 2. Solicitar inicio de sesión a Meta
+      final LoginResult result = await FacebookAuth.instance.login(
+        permissions: ['public_profile', 'email'],
+      );
+
+      if (result.status == LoginStatus.success) {
+        final AccessToken accessToken = result.accessToken!;
+
+        // 3. Crear la credencial para Firebase Auth
+        final OAuthCredential credential = FacebookAuthProvider.credential(
+          accessToken.tokenString,
+        );
+
+        // 4. Autenticar en Firebase con la credencial de Facebook
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(
+          credential,
+        );
+
+        final firebaseUser = userCredential.user;
+
+        if (firebaseUser == null) {
+          throw Exception('No se pudo obtener el usuario de Firebase');
+        }
+
+        // 5. Obtener datos adicionales del perfil de Facebook
+        final facebookData = await FacebookAuth.instance.getUserData();
+
+        final String? nombreFb = facebookData['name']?.toString();
+        final String? correoFb = facebookData['email']?.toString();
+        final String? fotoFb = facebookData['picture']?['data']?['url']
+            ?.toString();
+
+        // 6. Guardar o actualizar en Firestore y navegar
+        await _procesarUsuarioSocial(
+          firebaseUser: firebaseUser,
+          nombreFallback: nombreFb,
+          correoFallback: correoFb,
+          fotoFallback: fotoFb,
+        );
+      } else if (result.status == LoginStatus.cancelled) {
+        if (!mounted) return;
+        mostrarMensaje('Inicio de sesión con Facebook cancelado');
+      } else {
+        if (!mounted) return;
+        mostrarMensaje('Error de Facebook: ${result.message}');
+      }
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      mostrarMensaje('Error de Firebase: ${e.message ?? e.code}');
+    } catch (e) {
+      if (!mounted) return;
+      mostrarMensaje('No se pudo iniciar sesión con Facebook');
+    } finally {
+      if (mounted) {
+        setState(() {
+          cargando = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // REGISTRO Y GESTIÓN EN FIRESTORE
+  // ============================================================
+
+  Future<void> _procesarUsuarioSocial({
+    required User firebaseUser,
+    String? nombreFallback,
+    String? correoFallback,
+    String? fotoFallback,
+  }) async {
+    final referencia = FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(firebaseUser.uid);
+
+    final documento = await referencia.get();
+
+    String nombre;
+    String correo;
+    String rol;
+
+    if (documento.exists) {
+      final datos = documento.data()!;
+
+      nombre =
+          datos['nombre']?.toString() ??
+          firebaseUser.displayName ??
+          nombreFallback ??
+          'Usuario';
+
+      correo =
+          datos['correo']?.toString() ??
+          firebaseUser.email ??
+          correoFallback ??
+          '';
+
+      rol = datos['rol']?.toString() ?? 'estudiante';
+
+      await referencia.set({
+        'uid': firebaseUser.uid,
+        'nombre': nombre,
+        'correo': correo,
+        'foto': firebaseUser.photoURL ?? fotoFallback,
+        'ultimoAcceso': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } else {
+      nombre = firebaseUser.displayName ?? nombreFallback ?? 'Usuario';
+      correo = firebaseUser.email ?? correoFallback ?? '';
+      rol = 'estudiante';
+
+      await referencia.set({
+        'uid': firebaseUser.uid,
+        'nombre': nombre,
+        'correo': correo,
+        'foto': firebaseUser.photoURL ?? fotoFallback,
+        'rol': rol,
+        'fechaRegistro': FieldValue.serverTimestamp(),
+        'ultimoAcceso': FieldValue.serverTimestamp(),
+      });
+    }
+
+    if (!mounted) return;
+
+    final usuario = Usuario(
+      uid: firebaseUser.uid,
+      nombre: nombre,
+      correo: correo,
+      password: '',
+      rol: rol,
+    );
+
+    _navegarSegunRol(rol, usuario);
+  }
+
+  void _navegarSegunRol(String rol, Usuario usuario) {
+    if (rol == 'administrador') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => AdminScreen(usuario: usuario)),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => UserMainScreen(usuario: usuario)),
+      );
     }
   }
 
@@ -433,6 +503,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 18),
 
+                // BOTÓN GOOGLE
                 SizedBox(
                   width: double.infinity,
                   height: 54,
@@ -441,6 +512,36 @@ class _LoginScreenState extends State<LoginScreen> {
                     icon: const Icon(Icons.account_circle_outlined, size: 25),
                     label: const Text(
                       'Continuar con Google',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // BOTÓN FACEBOOK
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: cargando ? null : iniciarSesionFacebook,
+                    icon: const Icon(
+                      Icons.facebook,
+                      size: 25,
+                      color: Color(0xFF1877F2),
+                    ),
+                    label: const Text(
+                      'Continuar con Facebook',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

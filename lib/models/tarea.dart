@@ -1,40 +1,75 @@
 class Tarea {
-  final String id;
+  final int? id;
   final String titulo;
   final String materia;
   final String fecha;
   final String prioridad;
   final bool completada;
+  final String? usuarioId;
 
   Tarea({
-    this.id = '',
+    this.id,
     required this.titulo,
     required this.materia,
     required this.fecha,
     required this.prioridad,
     this.completada = false,
+    this.usuarioId,
   });
 
-  // Constructor flexible: acepta Tarea.fromMap(data) o Tarea.fromMap(data, id)
-  factory Tarea.fromMap(Map<String, dynamic> map, [String docId = '']) {
+  // ============================================================
+  // SQLITE -> TAREA
+  // ============================================================
+
+  factory Tarea.fromMap(Map<String, dynamic> map) {
     return Tarea(
-      id: docId.isNotEmpty ? docId : (map['id']?.toString() ?? ''),
-      titulo: map['titulo'] ?? map['nombre'] ?? 'Sin título',
-      materia: map['materia'] ?? 'General',
-      fecha: map['fechaEntrega']?.toString() ?? map['fecha']?.toString() ?? '',
-      prioridad: map['prioridad'] ?? 'Media',
-      completada: map['completada'] ?? map['completado'] ?? false,
+      id: map['id'] as int?,
+      titulo: map['titulo'] as String,
+      materia: map['materia'] as String,
+      fecha: map['fecha'] as String,
+      prioridad: map['prioridad'] as String,
+      completada: map['completada'] == 1,
+      usuarioId: map['usuario_id']?.toString(),
     );
   }
 
-  Map<String, dynamic> toMap(String usuarioUid) {
+  // ============================================================
+  // TAREA -> SQLITE
+  // ============================================================
+
+  Map<String, dynamic> toMap() {
     return {
-      'usuarioId': usuarioUid,
+      'id': id,
       'titulo': titulo,
       'materia': materia,
-      'fechaEntrega': fecha,
+      'fecha': fecha,
       'prioridad': prioridad,
-      'completada': completada,
+      'completada': completada ? 1 : 0,
+      'usuario_id': usuarioId,
     };
+  }
+
+  // ============================================================
+  // COPIAR TAREA
+  // ============================================================
+
+  Tarea copyWith({
+    int? id,
+    String? titulo,
+    String? materia,
+    String? fecha,
+    String? prioridad,
+    bool? completada,
+    String? usuarioId,
+  }) {
+    return Tarea(
+      id: id ?? this.id,
+      titulo: titulo ?? this.titulo,
+      materia: materia ?? this.materia,
+      fecha: fecha ?? this.fecha,
+      prioridad: prioridad ?? this.prioridad,
+      completada: completada ?? this.completada,
+      usuarioId: usuarioId ?? this.usuarioId,
+    );
   }
 }
