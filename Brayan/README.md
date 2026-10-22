@@ -6,5 +6,5 @@ Registra hallazgos de StudyFlow v1.0.0 hasta el 25 de octubre de 2026 a las 23:5
 
 | Fecha | Dispositivo / Android | Hallazgo (pasos, esperado y observado) | Issue (opcional) | Estado |
 | ----- | --------------------- | --------------------------------------- | ---------------- | ------ |
-|       |                       |                                         | -                |        |
+|22/10/2026|OPPO A53 android 12|Pasos| -                |        |
 |       |                       |                                         | -                |        |
