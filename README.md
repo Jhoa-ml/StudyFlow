@@ -7,11 +7,6 @@
 * **Versión a revisar:** StudyFlow v1.0.0, build 1.
 * **Descarga del APK:** abre la [Release v1.0.0](https://github.com/Jhoa-ml/StudyFlow/releases/tag/v1.0.0) y descarga `app-release.apk` en Assets. El mismo archivo también está en la raíz de este repositorio (`StudyFlow-1.0.0.apk`).
 
-**Credenciales de acceso (Administrador):**
-* **Correo:** `admin@studyflow.com`
-* **Contraseña:** `admin123456`
-
----
 
 ## Cómo registrar un hallazgo
 
