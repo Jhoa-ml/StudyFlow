@@ -68,24 +68,42 @@ class _LoginScreenState extends State<LoginScreen> {
           .doc(firebaseUser.uid)
           .get();
 
+      String nombre;
+      String correoFirebase;
+      String rol;
+
       if (!documento.exists) {
-        await FirebaseAuth.instance.signOut();
+        // Si el usuario existe en Auth pero no en Firestore, creamos su perfil automáticamente
+        nombre = firebaseUser.displayName ?? correo.split('@')[0];
+        correoFirebase = firebaseUser.email ?? correo;
+        rol = 'estudiante';
 
-        if (!mounted) return;
+        await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(firebaseUser.uid)
+            .set({
+              'uid': firebaseUser.uid,
+              'nombre': nombre,
+              'correo': correoFirebase,
+              'rol': rol,
+              'fechaRegistro': FieldValue.serverTimestamp(),
+              'ultimoAcceso': FieldValue.serverTimestamp(),
+            });
+      } else {
+        final datos = documento.data()!;
+        nombre = datos['nombre']?.toString() ?? 'Usuario';
+        correoFirebase =
+            datos['correo']?.toString() ?? firebaseUser.email ?? correo;
+        rol = datos['rol']?.toString() ?? 'estudiante';
 
-        mostrarMensaje(
-          'Tu cuenta existe, pero no tiene un perfil registrado en StudyFlow.',
-        );
-
-        return;
+        await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(firebaseUser.uid)
+            .set({
+              'ultimoAcceso': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
       }
 
-      final datos = documento.data()!;
-
-      final nombre = datos['nombre']?.toString() ?? 'Usuario';
-      final correoFirebase =
-          datos['correo']?.toString() ?? firebaseUser.email ?? correo;
-      final rol = datos['rol']?.toString() ?? 'estudiante';
       final usuario = Usuario(
         uid: firebaseUser.uid,
         nombre: nombre,
@@ -93,13 +111,6 @@ class _LoginScreenState extends State<LoginScreen> {
         password: '',
         rol: rol,
       );
-
-      await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(firebaseUser.uid)
-          .set({
-            'ultimoAcceso': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
 
       if (!mounted) return;
 
@@ -218,10 +229,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // 1. Cerrar cualquier sesión previa de Facebook
       await FacebookAuth.instance.logOut();
 
-      // 2. Solicitar inicio de sesión a Meta
       final LoginResult result = await FacebookAuth.instance.login(
         permissions: ['public_profile', 'email'],
       );
@@ -229,12 +238,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result.status == LoginStatus.success) {
         final AccessToken accessToken = result.accessToken!;
 
-        // 3. Crear la credencial para Firebase Auth
         final OAuthCredential credential = FacebookAuthProvider.credential(
           accessToken.tokenString,
         );
 
-        // 4. Autenticar en Firebase con la credencial de Facebook
         final userCredential = await FirebaseAuth.instance.signInWithCredential(
           credential,
         );
@@ -245,7 +252,6 @@ class _LoginScreenState extends State<LoginScreen> {
           throw Exception('No se pudo obtener el usuario de Firebase');
         }
 
-        // 5. Obtener datos adicionales del perfil de Facebook
         final facebookData = await FacebookAuth.instance.getUserData();
 
         final String? nombreFb = facebookData['name']?.toString();
@@ -253,7 +259,6 @@ class _LoginScreenState extends State<LoginScreen> {
         final String? fotoFb = facebookData['picture']?['data']?['url']
             ?.toString();
 
-        // 6. Guardar o actualizar en Firestore y navegar
         await _procesarUsuarioSocial(
           firebaseUser: firebaseUser,
           nombreFallback: nombreFb,
