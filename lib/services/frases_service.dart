@@ -12,14 +12,42 @@ class FrasesService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return Frase.fromJson(data);
+        final fraseOriginal = Frase.fromJson(data);
+
+        // Traducimos el texto recibido de la API al español
+        final textoTraducido = await _traducirTexto(fraseOriginal.texto);
+
+        return Frase(texto: textoTraducido, autor: fraseOriginal.autor);
       } else {
         throw Exception('Error al conectar con la API');
       }
     } catch (e) {
-      // Si no hay Internet o la API falla, devolvemos una frase aleatoria en español.
+      // Si falla la API o no hay red, usamos el respaldo en español
       return _obtenerFraseDeRespaldo();
     }
+  }
+
+  // Traductor automático vía API pública
+  Future<String> _traducirTexto(String texto) async {
+    try {
+      final urlTraduccion = Uri.parse(
+        'https://api.mymemory.translated.net/get?q=${Uri.encodeComponent(texto)}&langpair=en|es',
+      );
+      final response = await http
+          .get(urlTraduccion)
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final traducido = data['responseData']?['translatedText']?.toString();
+        if (traducido != null && traducido.isNotEmpty) {
+          return traducido;
+        }
+      }
+    } catch (_) {
+      // Si la traducción falla, se devuelve el texto original
+    }
+    return texto;
   }
 
   Frase _obtenerFraseDeRespaldo() {
