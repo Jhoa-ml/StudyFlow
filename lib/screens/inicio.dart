@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/tarjeta_frase.dart';
 import '../models/usuario.dart';
 import '../models/tarea.dart';
+import '../services/notification_service.dart';
 
 class InicioScreen extends StatefulWidget {
   final Usuario usuario;
@@ -22,6 +23,7 @@ class _InicioScreenState extends State<InicioScreen> {
   @override
   void initState() {
     super.initState();
+    NotificationService.init();
     cargarTareas();
   }
 
@@ -57,10 +59,17 @@ class _InicioScreenState extends State<InicioScreen> {
 
       if (!mounted) return;
 
+      final pendientesCount = tareasFirebase.where((t) => !t.completada).length;
+
       setState(() {
         tareas = tareasFirebase;
         cargando = false;
       });
+
+      // Disparar la notificación push en la barra de estado si hay tareas pendientes
+      if (pendientesCount > 0) {
+        NotificationService.mostrarNotificacionTareaPendiente(pendientesCount);
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -77,7 +86,6 @@ class _InicioScreenState extends State<InicioScreen> {
   @override
   Widget build(BuildContext context) {
     final pendientes = tareas.where((tarea) => !tarea.completada).length;
-
     final completadas = tareas.where((tarea) => tarea.completada).length;
 
     return Scaffold(
@@ -88,8 +96,76 @@ class _InicioScreenState extends State<InicioScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications_none),
+                if (pendientes > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Notificaciones',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Row(
+                    children: [
+                      Icon(
+                        Icons.notifications_active_outlined,
+                        color: Color(0xFF35A8FF),
+                      ),
+                      SizedBox(width: 10),
+                      Text('Notificaciones'),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (pendientes > 0) ...[
+                        Text(
+                          '¡Tienes $pendientes tarea(s) pendiente(s) por entregar!',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Revisa la lista de próximas tareas en tu pantalla principal para no perder ninguna entrega.',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ] else ...[
+                        const Text(
+                          '¡Todo al día! No tienes tareas pendientes por entregar en este momento.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Entendido'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
