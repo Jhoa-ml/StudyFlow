@@ -17,10 +17,6 @@ class Tarea {
     this.usuarioId,
   });
 
-  // ============================================================
-  // SQLITE -> TAREA
-  // ============================================================
-
   factory Tarea.fromMap(Map<String, dynamic> map) {
     return Tarea(
       id: map['id'] as int?,
@@ -28,14 +24,10 @@ class Tarea {
       materia: map['materia'] as String,
       fecha: map['fecha'] as String,
       prioridad: map['prioridad'] as String,
-      completada: map['completada'] == 1,
-      usuarioId: map['usuario_id']?.toString(),
+      completada: map['completada'] == 1 || map['completada'] == true,
+      usuarioId: map['usuario_id']?.toString() ?? map['usuarioId']?.toString(),
     );
   }
-
-  // ============================================================
-  // TAREA -> SQLITE
-  // ============================================================
 
   Map<String, dynamic> toMap() {
     return {
@@ -47,29 +39,5 @@ class Tarea {
       'completada': completada ? 1 : 0,
       'usuario_id': usuarioId,
     };
-  }
-
-  // ============================================================
-  // COPIAR TAREA
-  // ============================================================
-
-  Tarea copyWith({
-    int? id,
-    String? titulo,
-    String? materia,
-    String? fecha,
-    String? prioridad,
-    bool? completada,
-    String? usuarioId,
-  }) {
-    return Tarea(
-      id: id ?? this.id,
-      titulo: titulo ?? this.titulo,
-      materia: materia ?? this.materia,
-      fecha: fecha ?? this.fecha,
-      prioridad: prioridad ?? this.prioridad,
-      completada: completada ?? this.completada,
-      usuarioId: usuarioId ?? this.usuarioId,
-    );
   }
 }

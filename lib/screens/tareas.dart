@@ -16,6 +16,9 @@ class TareasScreen extends StatefulWidget {
 
 class _TareasScreenState extends State<TareasScreen> {
   List<Tarea> tareas = [];
+  Map<Tarea, String> idsFirestore = {};
+  List<String> misMaterias = [];
+
   String busqueda = '';
   String filtro = 'Todas';
   bool cargando = true;
@@ -23,72 +26,90 @@ class _TareasScreenState extends State<TareasScreen> {
   @override
   void initState() {
     super.initState();
-    cargarTareas();
+    cargarDatos();
   }
 
-  Future<void> cargarTareas() async {
+  Future<void> cargarDatos() async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-
       if (uid == null) {
         if (!mounted) return;
-
         setState(() {
           tareas = [];
           cargando = false;
         });
-
         return;
       }
 
-      final resultado = await FirebaseFirestore.instance
+      // 1. Cargar las materias creadas por este usuario
+      final materiasSnap = await FirebaseFirestore.instance
+          .collection('materias')
+          .where('usuarioId', isEqualTo: uid)
+          .get();
+
+      final listaMaterias = materiasSnap.docs
+          .map((doc) => doc.data()['nombre']?.toString() ?? '')
+          .where((m) => m.isNotEmpty)
+          .toList();
+
+      // 2. Cargar las tareas creadas por este usuario
+      final tareasSnap = await FirebaseFirestore.instance
           .collection('tareas')
           .where('usuarioId', isEqualTo: uid)
           .get();
 
-      final tareasFirebase = resultado.docs.map((doc) {
+      final nuevasTareas = <Tarea>[];
+      final nuevosIds = <Tarea, String>{};
+
+      for (final doc in tareasSnap.docs) {
         final data = doc.data();
 
-        return Tarea(
-          id: data['id'] is int
-              ? data['id']
-              : int.tryParse(data['id']?.toString() ?? ''),
+        String fecha = '';
+        final fechaFirebase = data['fecha'];
+        if (fechaFirebase is Timestamp) {
+          final fDate = fechaFirebase.toDate();
+          fecha =
+              '${fDate.day.toString().padLeft(2, '0')}/${fDate.month.toString().padLeft(2, '0')}/${fDate.year}';
+        } else {
+          fecha = fechaFirebase?.toString() ?? '';
+        }
+
+        final t = Tarea(
+          id: null,
           titulo: data['titulo']?.toString() ?? '',
           materia: data['materia']?.toString() ?? '',
-          fecha: data['fecha']?.toString() ?? '',
+          fecha: fecha,
           prioridad: data['prioridad']?.toString() ?? 'Media',
           completada: data['completada'] == true || data['completada'] == 1,
-          usuarioId: null,
+          usuarioId: uid,
         );
-      }).toList();
 
-      tareasFirebase.sort((a, b) {
-        return a.fecha.compareTo(b.fecha);
-      });
+        nuevasTareas.add(t);
+        nuevosIds[t] = doc.id;
+      }
 
       if (!mounted) return;
 
       setState(() {
-        tareas = tareasFirebase;
+        tareas = nuevasTareas;
+        idsFirestore = nuevosIds;
+        misMaterias = listaMaterias;
         cargando = false;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         cargando = false;
       });
-
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar las tareas: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error al cargar datos: $e')));
     }
   }
 
   List<Tarea> get tareasFiltradas {
     return tareas.where((tarea) {
-      final textoBusqueda = busqueda.toLowerCase();
-
+      final textoBusqueda = busqueda.toLowerCase().trim();
       final coincideBusqueda =
           tarea.titulo.toLowerCase().contains(textoBusqueda) ||
           tarea.materia.toLowerCase().contains(textoBusqueda);
@@ -104,40 +125,224 @@ class _TareasScreenState extends State<TareasScreen> {
   }
 
   Future<void> cambiarEstado(Tarea tarea) async {
+    final docId = idsFirestore[tarea];
+    if (docId == null) return;
+
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
+      await FirebaseFirestore.instance.collection('tareas').doc(docId).update({
+        'completada': !tarea.completada,
+      });
 
-      if (uid == null) return;
-
-      final query = await FirebaseFirestore.instance
-          .collection('tareas')
-          .where('usuarioId', isEqualTo: uid)
-          .where('titulo', isEqualTo: tarea.titulo)
-          .where('fecha', isEqualTo: tarea.fecha)
-          .get();
-
-      if (query.docs.isEmpty) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se encontró la tarea.')),
-        );
-
-        return;
-      }
-
-      final doc = query.docs.first;
-
-      await doc.reference.update({'completada': !tarea.completada});
-
-      await cargarTareas();
+      await cargarDatos();
     } catch (e) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar la tarea: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al actualizar tarea: $e')));
     }
+  }
+
+  Future<void> eliminarTarea(Tarea tarea) async {
+    final docId = idsFirestore[tarea];
+    if (docId == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('tareas').doc(docId).delete();
+      await cargarDatos();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tarea eliminada correctamente')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
+    }
+  }
+
+  void mostrarFormularioTarea({Tarea? tarea}) {
+    final tituloController = TextEditingController(text: tarea?.titulo ?? '');
+    final materiaController = TextEditingController(text: tarea?.materia ?? '');
+    final fechaController = TextEditingController(text: tarea?.fecha ?? '');
+    String prioridad = tarea?.prioridad ?? 'Media';
+    String? materiaSeleccionada = misMaterias.contains(tarea?.materia)
+        ? tarea?.materia
+        : null;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (contextDialog, setDialogState) {
+            return AlertDialog(
+              title: Text(tarea == null ? 'Nueva tarea' : 'Editar tarea'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: tituloController,
+                      decoration: const InputDecoration(
+                        labelText: 'Título de la tarea',
+                        prefixIcon: Icon(Icons.assignment_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Si hay materias registradas muestra Dropdown, de lo contrario un TextField
+                    if (misMaterias.isNotEmpty) ...[
+                      DropdownButtonFormField<String>(
+                        initialValue: materiaSeleccionada,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Materia',
+                          prefixIcon: Icon(Icons.menu_book_outlined),
+                        ),
+                        items: misMaterias.map((materia) {
+                          return DropdownMenuItem(
+                            value: materia,
+                            child: Text(materia),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            materiaSeleccionada = val;
+                            if (val != null) materiaController.text = val;
+                          });
+                        },
+                      ),
+                    ] else ...[
+                      TextField(
+                        controller: materiaController,
+                        decoration: const InputDecoration(
+                          labelText: 'Materia',
+                          prefixIcon: Icon(Icons.menu_book_outlined),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 12),
+
+                    TextField(
+                      controller: fechaController,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Fecha de entrega',
+                        prefixIcon: Icon(Icons.calendar_month_outlined),
+                      ),
+                      onTap: () async {
+                        final fecha = await showDatePicker(
+                          context: contextDialog,
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 30),
+                          ),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
+                          initialDate: DateTime.now(),
+                        );
+                        if (fecha != null) {
+                          fechaController.text =
+                              '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: prioridad,
+                      decoration: const InputDecoration(
+                        labelText: 'Prioridad',
+                        prefixIcon: Icon(Icons.flag_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'Baja', child: Text('Baja')),
+                        DropdownMenuItem(value: 'Media', child: Text('Media')),
+                        DropdownMenuItem(value: 'Alta', child: Text('Alta')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() {
+                            prioridad = val;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final titulo = tituloController.text.trim();
+                    final materia = misMaterias.isNotEmpty
+                        ? (materiaSeleccionada ?? '')
+                        : materiaController.text.trim();
+                    final fecha = fechaController.text.trim();
+
+                    if (titulo.isEmpty || materia.isEmpty || fecha.isEmpty) {
+                      ScaffoldMessenger.of(contextDialog).showSnackBar(
+                        const SnackBar(
+                          content: Text('Completa todos los campos'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    final uid = FirebaseAuth.instance.currentUser?.uid;
+                    if (uid == null) return;
+
+                    try {
+                      final datos = {
+                        'titulo': titulo,
+                        'materia': materia,
+                        'fecha': fecha,
+                        'prioridad': prioridad,
+                        'usuarioId': uid,
+                      };
+
+                      if (tarea == null) {
+                        await FirebaseFirestore.instance
+                            .collection('tareas')
+                            .add({
+                              ...datos,
+                              'completada': false,
+                              'fechaCreacion': FieldValue.serverTimestamp(),
+                            });
+                      } else {
+                        final docId = idsFirestore[tarea];
+                        if (docId != null) {
+                          await FirebaseFirestore.instance
+                              .collection('tareas')
+                              .doc(docId)
+                              .update(datos);
+                        }
+                      }
+
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+
+                      await cargarDatos();
+                    } catch (e) {
+                      ScaffoldMessenger.of(contextDialog).showSnackBar(
+                        SnackBar(content: Text('Error al guardar: $e')),
+                      );
+                    }
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Color colorPrioridad(String prioridad) {
@@ -153,136 +358,11 @@ class _TareasScreenState extends State<TareasScreen> {
     }
   }
 
-  IconData iconoPrioridad(String prioridad) {
-    switch (prioridad) {
-      case 'Alta':
-        return Icons.priority_high;
-      case 'Media':
-        return Icons.remove;
-      case 'Baja':
-        return Icons.keyboard_arrow_down;
-      default:
-        return Icons.circle;
-    }
-  }
-
-  void mostrarDetalle(Tarea tarea) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0B1727),
-      showDragHandle: true,
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tarea.titulo,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.menu_book_outlined,
-                    color: Color(0xFF35A8FF),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      tarea.materia,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_month_outlined,
-                    color: Color(0xFF35A8FF),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(tarea.fecha, style: const TextStyle(fontSize: 16)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Icon(
-                    iconoPrioridad(tarea.prioridad),
-                    color: colorPrioridad(tarea.prioridad),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Prioridad: ${tarea.prioridad}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: colorPrioridad(tarea.prioridad),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Icon(
-                    tarea.completada
-                        ? Icons.check_circle
-                        : Icons.pending_outlined,
-                    color: tarea.completada
-                        ? Colors.greenAccent
-                        : Colors.orangeAccent,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    tarea.completada ? 'Completada' : 'Pendiente',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: tarea.completada
-                          ? Colors.greenAccent
-                          : Colors.orangeAccent,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 25),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    cambiarEstado(tarea);
-                  },
-                  icon: Icon(tarea.completada ? Icons.undo : Icons.check),
-                  label: Text(
-                    tarea.completada
-                        ? 'Marcar como pendiente'
-                        : 'Marcar como completada',
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final lista = tareasFiltradas;
-
-    final pendientes = tareas.where((tarea) => !tarea.completada).length;
-
-    final completadas = tareas.where((tarea) => tarea.completada).length;
+    final pendientes = tareas.where((t) => !t.completada).length;
+    final completadas = tareas.where((t) => t.completada).length;
 
     return Scaffold(
       appBar: AppBar(
@@ -292,11 +372,17 @@ class _TareasScreenState extends State<TareasScreen> {
         ),
         actions: [
           IconButton(
-            onPressed: cargarTareas,
+            onPressed: cargarDatos,
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => mostrarFormularioTarea(),
+        icon: const Icon(Icons.add),
+        label: const Text('Nueva Tarea'),
+        backgroundColor: const Color(0xFF35A8FF),
       ),
       body: Column(
         children: [
@@ -322,22 +408,16 @@ class _TareasScreenState extends State<TareasScreen> {
               ],
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 5),
             child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  busqueda = value;
-                });
-              },
+              onChanged: (val) => setState(() => busqueda = val),
               decoration: const InputDecoration(
                 hintText: 'Buscar tarea o materia...',
                 prefixIcon: Icon(Icons.search),
               ),
             ),
           ),
-
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -356,17 +436,12 @@ class _TareasScreenState extends State<TareasScreen> {
                     child: FilterChip(
                       label: Text(opcion),
                       selected: filtro == opcion,
-                      onSelected: (_) {
-                        setState(() {
-                          filtro = opcion;
-                        });
-                      },
+                      onSelected: (_) => setState(() => filtro = opcion),
                     ),
                   ),
               ],
             ),
           ),
-
           Expanded(
             child: cargando
                 ? const Center(child: CircularProgressIndicator())
@@ -376,93 +451,95 @@ class _TareasScreenState extends State<TareasScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.assignment_turned_in_outlined,
-                          size: 70,
+                          Icons.task_outlined,
+                          size: 60,
                           color: Colors.white30,
                         ),
-                        SizedBox(height: 15),
+                        SizedBox(height: 12),
                         Text(
-                          'No hay tareas',
+                          'No tienes tareas registradas',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         SizedBox(height: 6),
                         Text(
-                          'Las tareas asignadas aparecerán aquí',
+                          'Usa el botón "+ Nueva Tarea" para agregar una.',
                           style: TextStyle(color: Colors.white54),
                         ),
                       ],
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 5, 16, 30),
+                    padding: const EdgeInsets.fromLTRB(16, 5, 16, 80),
                     itemCount: lista.length,
                     itemBuilder: (context, index) {
                       final tarea = lista[index];
-
                       return Card(
                         color: const Color(0xFF0B1727),
                         margin: const EdgeInsets.only(bottom: 12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => mostrarDetalle(tarea),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: ListTile(
-                              leading: Checkbox(
-                                value: tarea.completada,
-                                onChanged: (_) {
-                                  cambiarEstado(tarea);
-                                },
-                              ),
-                              title: Text(
-                                tarea.titulo,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  decoration: tarea.completada
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                  color: tarea.completada
-                                      ? Colors.white54
-                                      : Colors.white,
-                                ),
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 5),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        '${tarea.materia} • ${tarea.fecha}',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              trailing: Container(
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: tarea.completada,
+                            onChanged: (_) => cambiarEstado(tarea),
+                          ),
+                          title: Text(
+                            tarea.titulo,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              decoration: tarea.completada
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: tarea.completada
+                                  ? Colors.white54
+                                  : Colors.white,
+                            ),
+                          ),
+                          subtitle: Text('${tarea.materia} • ${tarea.fecha}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
-                                  vertical: 5,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: colorPrioridad(
                                     tarea.prioridad,
                                   ).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
                                   tarea.prioridad,
                                   style: TextStyle(
                                     color: colorPrioridad(tarea.prioridad),
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
-                            ),
+                              PopupMenuButton<String>(
+                                onSelected: (val) {
+                                  if (val == 'editar') {
+                                    mostrarFormularioTarea(tarea: tarea);
+                                  } else if (val == 'eliminar') {
+                                    eliminarTarea(tarea);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'editar',
+                                    child: Text('Editar'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'eliminar',
+                                    child: Text('Eliminar'),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -496,26 +573,23 @@ class _ResumenCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icono, color: const Color(0xFF35A8FF), size: 30),
+          Icon(icono, color: const Color(0xFF35A8FF), size: 28),
           const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  titulo,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titulo,
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              Text(
+                cantidad.toString(),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  cantidad.toString(),
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
