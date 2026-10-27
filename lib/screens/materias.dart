@@ -16,7 +16,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
   final _materiaController = TextEditingController();
   final _profesorController = TextEditingController();
 
-  Future<void> _agregarMateria() async {
+  Future<void> _guardarMateria({DocumentSnapshot? doc}) async {
     final nombre = _materiaController.text.trim();
     final profesor = _profesorController.text.trim();
 
@@ -31,12 +31,35 @@ class _MateriasScreenState extends State<MateriasScreen> {
     if (uid == null) return;
 
     try {
-      await FirebaseFirestore.instance.collection('materias').add({
-        'usuarioId': uid,
-        'nombre': nombre,
-        'profesor': profesor.isEmpty ? 'Sin profesor registrado' : profesor,
-        'fechaCreacion': FieldValue.serverTimestamp(),
-      });
+      if (doc == null) {
+        // Crear
+        await FirebaseFirestore.instance.collection('materias').add({
+          'usuarioId': uid,
+          'nombre': nombre,
+          'profesor': profesor.isEmpty ? 'Sin profesor registrado' : profesor,
+          'fechaCreacion': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Editar
+        final String nombreAnterior = doc['nombre'] ?? '';
+        await doc.reference.update({
+          'nombre': nombre,
+          'profesor': profesor.isEmpty ? 'Sin profesor registrado' : profesor,
+        });
+
+        // Actualizar el nombre de la materia en las tareas asociadas
+        if (nombreAnterior.isNotEmpty && nombreAnterior != nombre) {
+          final tareasSnapshot = await FirebaseFirestore.instance
+              .collection('tareas')
+              .where('usuarioId', isEqualTo: uid)
+              .where('materia', isEqualTo: nombreAnterior)
+              .get();
+
+          for (var tDoc in tareasSnapshot.docs) {
+            await tDoc.reference.update({'materia': nombre});
+          }
+        }
+      }
 
       _materiaController.clear();
       _profesorController.clear();
@@ -45,7 +68,13 @@ class _MateriasScreenState extends State<MateriasScreen> {
       Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Materia registrada con éxito')),
+        SnackBar(
+          content: Text(
+            doc == null
+                ? 'Materia registrada con éxito'
+                : 'Materia actualizada con éxito',
+          ),
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -54,11 +83,19 @@ class _MateriasScreenState extends State<MateriasScreen> {
     }
   }
 
-  void _mostrarDialogoCrearMateria() {
+  void _mostrarDialogoMateria({DocumentSnapshot? doc}) {
+    if (doc != null) {
+      _materiaController.text = doc['nombre'] ?? '';
+      _profesorController.text = doc['profesor'] ?? '';
+    } else {
+      _materiaController.clear();
+      _profesorController.clear();
+    }
+
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Agregar Materia'),
+        title: Text(doc == null ? 'Agregar Materia' : 'Editar Materia'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -85,12 +122,45 @@ class _MateriasScreenState extends State<MateriasScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: _agregarMateria,
+            onPressed: () => _guardarMateria(doc: doc),
             child: const Text('Guardar'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _eliminarMateria(DocumentSnapshot doc) async {
+    final String nombreMateria = doc['nombre'] ?? 'esta materia';
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar materia'),
+        content: Text(
+          '¿Estás seguro de eliminar "$nombreMateria"? Se conservarán tus tareas creadas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      await doc.reference.delete();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Materia eliminada')));
+    }
   }
 
   @override
@@ -100,7 +170,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Mis Materias')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _mostrarDialogoCrearMateria,
+        onPressed: () => _mostrarDialogoMateria(),
         icon: const Icon(Icons.add),
         label: const Text('Nueva Materia'),
         backgroundColor: const Color(0xFF35A8FF),
@@ -169,12 +239,24 @@ class _MateriasScreenState extends State<MateriasScreen> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(data['profesor'] ?? 'Sin profesor'),
-                  trailing: IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.redAccent,
-                    ),
-                    onPressed: () => doc.reference.delete(),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.edit_outlined,
+                          color: Color(0xFF35A8FF),
+                        ),
+                        onPressed: () => _mostrarDialogoMateria(doc: doc),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => _eliminarMateria(doc),
+                      ),
+                    ],
                   ),
                 ),
               );
