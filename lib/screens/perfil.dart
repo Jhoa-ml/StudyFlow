@@ -94,6 +94,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
   }
 
   void mostrarCambiarPassword() {
+    final passwordActualController = TextEditingController();
     final nuevaPasswordController = TextEditingController();
     final confirmarPasswordController = TextEditingController();
 
@@ -110,10 +111,19 @@ class _PerfilScreenState extends State<PerfilScreen> {
                 child: Column(
                   children: [
                     const Text(
-                      'Ingresa una nueva contraseña para tu cuenta.',
+                      'Ingresa tu contraseña actual y la nueva contraseña para tu cuenta.',
                       style: TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 15),
+                    TextField(
+                      controller: passwordActualController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Contraseña actual',
+                        prefixIcon: Icon(Icons.lock_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: nuevaPasswordController,
                       obscureText: true,
@@ -147,11 +157,14 @@ class _PerfilScreenState extends State<PerfilScreen> {
                   onPressed: cambiando
                       ? null
                       : () async {
+                          final actual = passwordActualController.text.trim();
                           final nueva = nuevaPasswordController.text.trim();
                           final confirmar = confirmarPasswordController.text
                               .trim();
 
-                          if (nueva.isEmpty || confirmar.isEmpty) {
+                          if (actual.isEmpty ||
+                              nueva.isEmpty ||
+                              confirmar.isEmpty) {
                             ScaffoldMessenger.of(contextDialog).showSnackBar(
                               const SnackBar(
                                 content: Text('Completa todos los campos.'),
@@ -187,10 +200,18 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           try {
                             final user = FirebaseAuth.instance.currentUser;
 
-                            if (user == null) {
+                            if (user == null || user.email == null) {
                               throw Exception('No hay una sesión activa.');
                             }
 
+                            // 1. Reautenticar con la contraseña actual
+                            final credencial = EmailAuthProvider.credential(
+                              email: user.email!,
+                              password: actual,
+                            );
+                            await user.reauthenticateWithCredential(credencial);
+
+                            // 2. Actualizar a la nueva contraseña
                             await user.updatePassword(nueva);
 
                             if (!dialogContext.mounted) return;
@@ -216,12 +237,17 @@ class _PerfilScreenState extends State<PerfilScreen> {
                             String mensaje;
 
                             switch (e.code) {
+                              case 'wrong-password':
+                              case 'invalid-credential':
+                                mensaje = 'La contraseña actual es incorrecta.';
+                                break;
                               case 'requires-recent-login':
                                 mensaje =
                                     'Por seguridad, vuelve a iniciar sesión antes de cambiar la contraseña.';
                                 break;
                               case 'weak-password':
-                                mensaje = 'La contraseña es demasiado débil.';
+                                mensaje =
+                                    'La nueva contraseña es demasiado débil.';
                                 break;
                               default:
                                 mensaje =
