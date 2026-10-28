@@ -35,10 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ============================================================
-  // LOGIN CON CORREO Y CONTRASEÑA
-  // ============================================================
-
   Future<void> iniciarSesion() async {
     final correo = correoController.text.trim();
     final password = passwordController.text.trim();
@@ -74,7 +70,6 @@ class _LoginScreenState extends State<LoginScreen> {
       String rol;
 
       if (!documento.exists) {
-        // Si el usuario existe en Auth pero no en Firestore, creamos su perfil automáticamente
         nombre = firebaseUser.displayName ?? correo.split('@')[0];
         correoFirebase = firebaseUser.email ?? correo;
         rol = 'estudiante';
@@ -158,10 +153,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ============================================================
-  // LOGIN CON GOOGLE
-  // ============================================================
-
   Future<void> iniciarSesionGoogle() async {
     setState(() {
       cargando = true;
@@ -220,10 +211,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ============================================================
-  // LOGIN CON FACEBOOK
-  // ============================================================
-
   Future<void> iniciarSesionFacebook() async {
     setState(() {
       cargando = true;
@@ -232,8 +219,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await FacebookAuth.instance.logOut();
 
+      // Solo solicitar public_profile para evitar conflicto con los permisos de Facebook
       final LoginResult result = await FacebookAuth.instance.login(
-        permissions: ['public_profile', 'email'],
+        permissions: ['public_profile'],
       );
 
       if (result.status == LoginStatus.success) {
@@ -256,7 +244,8 @@ class _LoginScreenState extends State<LoginScreen> {
         final facebookData = await FacebookAuth.instance.getUserData();
 
         final String? nombreFb = facebookData['name']?.toString();
-        final String? correoFb = facebookData['email']?.toString();
+        final String? correoFb =
+            facebookData['email']?.toString() ?? firebaseUser.email;
         final String? fotoFb = facebookData['picture']?['data']?['url']
             ?.toString();
 
@@ -287,10 +276,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
   }
-
-  // ============================================================
-  // REGISTRO Y GESTIÓN EN FIRESTORE
-  // ============================================================
 
   Future<void> _procesarUsuarioSocial({
     required User firebaseUser,
@@ -375,10 +360,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ============================================================
-  // MENSAJES
-  // ============================================================
-
   void mostrarMensaje(String mensaje) {
     ScaffoldMessenger.of(
       context,
@@ -391,10 +372,6 @@ class _LoginScreenState extends State<LoginScreen> {
     passwordController.dispose();
     super.dispose();
   }
-
-  // ============================================================
-  // INTERFAZ
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -509,7 +486,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 18),
 
-                // BOTÓN GOOGLE
                 SizedBox(
                   width: double.infinity,
                   height: 54,
@@ -535,7 +511,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // BOTÓN FACEBOOK
                 SizedBox(
                   width: double.infinity,
                   height: 54,
@@ -565,7 +540,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 20),
 
-                // ENLACE A REGISTRO MANUAL
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

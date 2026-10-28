@@ -21,6 +21,7 @@ class _TareasScreenState extends State<TareasScreen> {
 
   String busqueda = '';
   String filtro = 'Todas';
+  String materiaFiltro = 'Todas las materias';
   bool cargando = true;
 
   @override
@@ -41,18 +42,19 @@ class _TareasScreenState extends State<TareasScreen> {
         return;
       }
 
-      // 1. Cargar las materias creadas por este usuario
       final materiasSnap = await FirebaseFirestore.instance
-          .collection('materias')
+          .collection('clases')
           .where('usuarioId', isEqualTo: uid)
           .get();
 
       final listaMaterias = materiasSnap.docs
-          .map((doc) => doc.data()['nombre']?.toString() ?? '')
+          .map((doc) {
+            final data = doc.data();
+            return (data['materia'] ?? data['nombre'])?.toString() ?? '';
+          })
           .where((m) => m.isNotEmpty)
           .toList();
 
-      // 2. Cargar las tareas creadas por este usuario
       final tareasSnap = await FirebaseFirestore.instance
           .collection('tareas')
           .where('usuarioId', isEqualTo: uid)
@@ -120,7 +122,11 @@ class _TareasScreenState extends State<TareasScreen> {
           (filtro == 'Completadas' && tarea.completada) ||
           tarea.prioridad == filtro;
 
-      return coincideBusqueda && coincideFiltro;
+      final coincideMateria =
+          materiaFiltro == 'Todas las materias' ||
+          tarea.materia == materiaFiltro;
+
+      return coincideBusqueda && coincideFiltro && coincideMateria;
     }).toList();
   }
 
@@ -191,13 +197,12 @@ class _TareasScreenState extends State<TareasScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Si hay materias registradas muestra Dropdown, de lo contrario un TextField
                     if (misMaterias.isNotEmpty) ...[
                       DropdownButtonFormField<String>(
                         initialValue: materiaSeleccionada,
                         isExpanded: true,
                         decoration: const InputDecoration(
-                          labelText: 'Materia',
+                          labelText: 'Selecciona una materia',
                           prefixIcon: Icon(Icons.menu_book_outlined),
                         ),
                         items: misMaterias.map((materia) {
@@ -217,7 +222,7 @@ class _TareasScreenState extends State<TareasScreen> {
                       TextField(
                         controller: materiaController,
                         decoration: const InputDecoration(
-                          labelText: 'Materia',
+                          labelText: 'Materia (o agrégala en "Materias")',
                           prefixIcon: Icon(Icons.menu_book_outlined),
                         ),
                       ),
@@ -358,6 +363,29 @@ class _TareasScreenState extends State<TareasScreen> {
     }
   }
 
+  String calcularDiasRestantes(String fechaTexto) {
+    try {
+      final partes = fechaTexto.split('/');
+      if (partes.length != 3) return '';
+      final dia = int.parse(partes[0]);
+      final mes = int.parse(partes[1]);
+      final anio = int.parse(partes[2]);
+
+      final fechaEntrega = DateTime(anio, mes, dia);
+      final hoy = DateTime.now();
+      final hoyLimpio = DateTime(hoy.year, hoy.month, hoy.day);
+
+      final diferencia = fechaEntrega.difference(hoyLimpio).inDays;
+
+      if (diferencia < 0) return 'Vencida';
+      if (diferencia == 0) return 'Vence hoy';
+      if (diferencia == 1) return 'Vence mañana';
+      return '$diferencia días restantes';
+    } catch (_) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final lista = tareasFiltradas;
@@ -366,6 +394,7 @@ class _TareasScreenState extends State<TareasScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text(
           'Mis tareas',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -418,9 +447,34 @@ class _TareasScreenState extends State<TareasScreen> {
               ),
             ),
           ),
+
+          // Filtro opcional por Materia
+          if (misMaterias.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: DropdownButtonFormField<String>(
+                value: materiaFiltro,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  labelText: 'Filtrar por Materia',
+                  prefixIcon: Icon(Icons.filter_list, size: 20),
+                ),
+                items: ['Todas las materias', ...misMaterias].map((m) {
+                  return DropdownMenuItem(value: m, child: Text(m));
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => materiaFiltro = val);
+                },
+              ),
+            ),
+
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 for (final opcion in [
@@ -476,6 +530,8 @@ class _TareasScreenState extends State<TareasScreen> {
                     itemCount: lista.length,
                     itemBuilder: (context, index) {
                       final tarea = lista[index];
+                      final estadoTiempo = calcularDiasRestantes(tarea.fecha);
+
                       return Card(
                         color: const Color(0xFF0B1727),
                         margin: const EdgeInsets.only(bottom: 12),
@@ -496,7 +552,28 @@ class _TareasScreenState extends State<TareasScreen> {
                                   : Colors.white,
                             ),
                           ),
-                          subtitle: Text('${tarea.materia} • ${tarea.fecha}'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${tarea.materia} • ${tarea.fecha}'),
+                              if (estadoTiempo.isNotEmpty && !tarea.completada)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    estadoTiempo,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: estadoTiempo == 'Vencida'
+                                          ? Colors.redAccent
+                                          : estadoTiempo == 'Vence hoy'
+                                          ? Colors.amber
+                                          : const Color(0xFF35A8FF),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

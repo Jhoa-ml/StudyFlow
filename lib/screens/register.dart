@@ -13,6 +13,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
   final nombreController = TextEditingController();
   final correoController = TextEditingController();
   final passwordController = TextEditingController();
@@ -21,27 +22,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool mostrarPassword = false;
   bool cargando = false;
 
+  String? _validarPasswordSegura(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Ingresa una contraseña';
+    }
+    if (value.length < 8) {
+      return 'Debe tener al menos 8 caracteres';
+    }
+    if (!RegExp(r'(?=.*[A-Z])').hasMatch(value)) {
+      return 'Incluye al menos una letra mayúscula';
+    }
+    if (!RegExp(r'(?=.*[a-z])').hasMatch(value)) {
+      return 'Incluye al menos una letra minúscula';
+    }
+    if (!RegExp(r'(?=.*[0-9])').hasMatch(value)) {
+      return 'Incluye al menos un número';
+    }
+    // Se usa un patrón limpio de expresión regular sin interferencias
+    if (!RegExp(r'(?=.*[!@#\$%^&*(),.?":{}|<>])').hasMatch(value)) {
+      return 'Incluye al menos un símbolo especial (!@#\$%...)';
+    }
+    return null;
+  }
+
   Future<void> registrarUsuario() async {
+    if (!_formKey.currentState!.validate()) return;
+
     final nombre = nombreController.text.trim();
     final correo = correoController.text.trim();
     final password = passwordController.text.trim();
     final confirmPassword = confirmPasswordController.text.trim();
 
-    if (nombre.isEmpty ||
-        correo.isEmpty ||
-        password.isEmpty ||
-        confirmPassword.isEmpty) {
-      mostrarMensaje('Completa todos los campos');
-      return;
-    }
-
     if (password != confirmPassword) {
       mostrarMensaje('Las contraseñas no coinciden');
-      return;
-    }
-
-    if (password.length < 6) {
-      mostrarMensaje('La contraseña debe tener al menos 6 caracteres');
       return;
     }
 
@@ -50,7 +63,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      // 1. Crear el usuario en Firebase Authentication
       final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: correo, password: password);
 
@@ -60,10 +72,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         throw Exception('No se pudo crear el usuario');
       }
 
-      // Actualizar el nombre en el perfil de Auth
       await firebaseUser.updateDisplayName(nombre);
 
-      // 2. Guardar el perfil en Firestore
       await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(firebaseUser.uid)
@@ -88,7 +98,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       mostrarMensaje('¡Cuenta creada exitosamente!');
 
-      // 3. Entrar directamente a la app
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => UserMainScreen(usuario: usuario)),
@@ -151,101 +160,109 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(28),
-            child: Column(
-              children: [
-                const Text(
-                  'Únete a StudyFlow',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF35A8FF),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Crea tu cuenta manual para organizar tu vida académica',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white60, fontSize: 15),
-                ),
-                const SizedBox(height: 35),
-
-                // Nombre completo
-                TextField(
-                  controller: nombreController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre completo',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Correo
-                TextField(
-                  controller: correoController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo electrónico',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Contraseña
-                TextField(
-                  controller: passwordController,
-                  obscureText: !mostrarPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        mostrarPassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          mostrarPassword = !mostrarPassword;
-                        });
-                      },
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  const Text(
+                    'Únete a StudyFlow',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF35A8FF),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-
-                // Confirmar Contraseña
-                TextField(
-                  controller: confirmPasswordController,
-                  obscureText: !mostrarPassword,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmar contraseña',
-                    prefixIcon: Icon(Icons.lock_reset_outlined),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Crea tu cuenta manual para organizar tu vida académica',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white60, fontSize: 15),
                   ),
-                ),
-                const SizedBox(height: 30),
+                  const SizedBox(height: 35),
 
-                // Botón de Registro
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: FilledButton(
-                    onPressed: cargando ? null : registrarUsuario,
-                    child: cargando
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Registrarse',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                  TextFormField(
+                    controller: nombreController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre completo',
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    validator: (val) => val == null || val.trim().isEmpty
+                        ? 'Ingresa tu nombre'
+                        : null,
+                  ),
+                  const SizedBox(height: 18),
+
+                  TextFormField(
+                    controller: correoController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Correo electrónico',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                    validator: (val) => val == null || !val.contains('@')
+                        ? 'Ingresa un correo válido'
+                        : null,
+                  ),
+                  const SizedBox(height: 18),
+
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: !mostrarPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          mostrarPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            mostrarPassword = !mostrarPassword;
+                          });
+                        },
+                      ),
+                    ),
+                    validator: _validarPasswordSegura,
+                  ),
+                  const SizedBox(height: 18),
+
+                  TextFormField(
+                    controller: confirmPasswordController,
+                    obscureText: !mostrarPassword,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirmar contraseña',
+                      prefixIcon: Icon(Icons.lock_reset_outlined),
+                    ),
+                    validator: (val) => val == null || val.isEmpty
+                        ? 'Confirma tu contraseña'
+                        : null,
+                  ),
+                  const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: cargando ? null : registrarUsuario,
+                      child: cargando
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Registrarse',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

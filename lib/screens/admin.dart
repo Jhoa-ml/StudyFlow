@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/usuario.dart';
-import '../firebase_options.dart';
 import 'login.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -17,235 +15,134 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  List<Usuario> usuarios = [];
-  String busqueda = '';
-
-  int totalTareas = 0;
-  int tareasPendientes = 0;
-  int tareasCompletadas = 0;
-  int totalUsuariosFirebase = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    cargarDatos();
-  }
-
-  Future<void> cargarDatos() async {
-    try {
-      final usuariosSnapshot = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .orderBy('nombre')
-          .get();
-
-      final tareasSnapshot = await FirebaseFirestore.instance
-          .collection('tareas')
-          .get();
-
-      final usuariosFirebase = usuariosSnapshot.docs.map((doc) {
-        final datos = doc.data();
-        return Usuario(
-          uid: doc.id,
-          nombre: datos['nombre']?.toString() ?? 'Usuario',
-          correo: datos['correo']?.toString() ?? '',
-          password: '',
-          rol: datos['rol']?.toString() ?? 'estudiante',
-        );
-      }).toList();
-
-      int completadas = 0;
-      for (final tarea in tareasSnapshot.docs) {
-        final datos = tarea.data();
-        final completada = datos['completada'];
-        if (completada == true || completada == 1) {
-          completadas++;
-        }
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        usuarios = usuariosFirebase;
-        totalUsuariosFirebase = usuariosFirebase.length;
-        totalTareas = tareasSnapshot.docs.length;
-        tareasCompletadas = completadas;
-        tareasPendientes = tareasSnapshot.docs.length - completadas;
-      });
-    } catch (e) {
-      debugPrint('Error al cargar datos de Firebase: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudieron cargar los datos: $e')),
-      );
-    }
-  }
-
-  List<Usuario> get usuariosFiltrados {
-    final texto = busqueda.toLowerCase().trim();
-    if (texto.isEmpty) return usuarios;
-
-    return usuarios.where((usuario) {
-      return usuario.nombre.toLowerCase().contains(texto) ||
-          usuario.correo.toLowerCase().contains(texto);
-    }).toList();
-  }
-
-  int get totalEstudiantes =>
-      usuarios.where((usuario) => usuario.rol == 'estudiante').length;
-
-  void abrirPerfil() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AdminPerfilScreen(usuario: widget.usuario),
-      ),
-    );
-  }
-
-  Future<void> cerrarSesion() async {
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (e) {
-      debugPrint('Error al cerrar sesión: $e');
-    }
-
-    if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final lista = usuariosFiltrados;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Panel de Consulta Admin'),
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Panel Administrador',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            onPressed: cargarDatos,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Actualizar',
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: GestureDetector(
-              onTap: abrirPerfil,
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color(0xFF35A8FF),
-                child: Text(
-                  widget.usuario.nombre.isNotEmpty
-                      ? widget.usuario.nombre[0].toUpperCase()
-                      : 'A',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+            icon: const Icon(Icons.account_circle_outlined, size: 28),
+            tooltip: 'Mi perfil',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminPerfilScreen(usuario: widget.usuario),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: cargarDatos,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Hola, ${widget.usuario.nombre}',
-              style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
             const Text(
-              'Métricas del sistema StudyFlow',
-              style: TextStyle(color: Colors.white54),
+              'Usuarios registrados',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 25),
+            const SizedBox(height: 12),
 
-            Row(
-              children: [
-                Expanded(
-                  child: _EstadisticaCard(
-                    icono: Icons.groups,
-                    titulo: 'Usuarios',
-                    valor: totalUsuariosFirebase,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _EstadisticaCard(
-                    icono: Icons.school_outlined,
-                    titulo: 'Estudiantes',
-                    valor: totalEstudiantes,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _EstadisticaCard(
-                    icono: Icons.assignment_outlined,
-                    titulo: 'Total Tareas',
-                    valor: totalTareas,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _EstadisticaCard(
-                    icono: Icons.check_circle_outline,
-                    titulo: 'Completadas',
-                    valor: tareasCompletadas,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 25),
+            // Lista de usuarios en tiempo real desde Firestore
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-            TextField(
-              onChanged: (value) => setState(() => busqueda = value),
-              decoration: const InputDecoration(
-                hintText: 'Buscar usuario...',
-                prefixIcon: Icon(Icons.search),
-              ),
-            ),
-            const SizedBox(height: 20),
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Error al cargar usuarios: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    );
+                  }
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Usuarios Registrados',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  '${lista.length}',
-                  style: const TextStyle(
-                    color: Color(0xFF35A8FF),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No hay usuarios registrados',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    );
+                  }
 
-            ...lista.map(
-              (u) => Card(
-                color: const Color(0xFF0B1727),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFF35A8FF),
-                    child: Text(
-                      u.nombre.isNotEmpty ? u.nombre[0].toUpperCase() : 'U',
-                    ),
-                  ),
-                  title: Text(u.nombre),
-                  subtitle: Text('${u.correo}\n${u.rol}'),
-                ),
+                  final usuariosDocs = snapshot.data!.docs;
+
+                  return ListView.builder(
+                    itemCount: usuariosDocs.length,
+                    itemBuilder: (context, index) {
+                      final doc = usuariosDocs[index];
+                      final data = doc.data() as Map<String, dynamic>;
+
+                      final nombre = data['nombre']?.toString() ?? 'Sin nombre';
+                      final correo = data['correo']?.toString() ?? 'Sin correo';
+                      final rol = data['rol']?.toString() ?? 'estudiante';
+
+                      return Card(
+                        color: const Color(0xFF0B1727),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: rol == 'administrador'
+                                ? Colors.amber.withValues(alpha: 0.2)
+                                : const Color(
+                                    0xFF35A8FF,
+                                  ).withValues(alpha: 0.2),
+                            child: Icon(
+                              rol == 'administrador'
+                                  ? Icons.admin_panel_settings
+                                  : Icons.person_outline,
+                              color: rol == 'administrador'
+                                  ? Colors.amber
+                                  : const Color(0xFF35A8FF),
+                            ),
+                          ),
+                          title: Text(
+                            nombre,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(correo),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: rol == 'administrador'
+                                  ? Colors.amber.withValues(alpha: 0.15)
+                                  : Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              rol.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: rol == 'administrador'
+                                    ? Colors.amber
+                                    : const Color(0xFF35A8FF),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -255,58 +152,168 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 }
 
-class AdminPerfilScreen extends StatelessWidget {
+// ============================================================
+// PANTALLA INDEPENDIENTE DE PERFIL DE ADMINISTRADOR
+// ============================================================
+
+class AdminPerfilScreen extends StatefulWidget {
   final Usuario usuario;
 
   const AdminPerfilScreen({super.key, required this.usuario});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Perfil Admin')),
-      body: Center(child: Text('Perfil de ${usuario.nombre}')),
-    );
-  }
+  State<AdminPerfilScreen> createState() => _AdminPerfilScreenState();
 }
 
-class _EstadisticaCard extends StatelessWidget {
-  final IconData icono;
-  final String titulo;
-  final int valor;
+class _AdminPerfilScreenState extends State<AdminPerfilScreen> {
+  Future<void> _cerrarSesion() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text(
+          '¿Estás seguro de que deseas salir del panel de administrador?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    );
 
-  const _EstadisticaCard({
-    required this.icono,
-    required this.titulo,
-    required this.valor,
-  });
+    if (confirmar == true) {
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1727),
-        borderRadius: BorderRadius.circular(16),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Perfil de Administrador',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
-      child: Row(
+      body: ListView(
+        padding: const EdgeInsets.all(20),
         children: [
-          Icon(icono, color: const Color(0xFF35A8FF), size: 28),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                titulo,
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                valor.toString(),
+          const SizedBox(height: 10),
+
+          Center(
+            child: CircleAvatar(
+              radius: 50,
+              backgroundColor: const Color(0xFF35A8FF),
+              child: Text(
+                widget.usuario.nombre.isNotEmpty
+                    ? widget.usuario.nombre[0].toUpperCase()
+                    : 'A',
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 40,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Center(
+            child: Text(
+              widget.usuario.nombre,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          const SizedBox(height: 5),
+
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'ADMINISTRADOR',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          const Text(
+            'Información de la cuenta',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 10),
+
+          Card(
+            color: const Color(0xFF0B1727),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(
+                    Icons.person_outline,
+                    color: Color(0xFF35A8FF),
+                  ),
+                  title: const Text('Nombre'),
+                  subtitle: Text(widget.usuario.nombre),
+                ),
+                const Divider(height: 1, color: Colors.white10),
+                ListTile(
+                  leading: const Icon(
+                    Icons.email_outlined,
+                    color: Color(0xFF35A8FF),
+                  ),
+                  title: const Text('Correo electrónico'),
+                  subtitle: Text(widget.usuario.correo),
+                ),
+                const Divider(height: 1, color: Colors.white10),
+                ListTile(
+                  leading: const Icon(
+                    Icons.verified_user_outlined,
+                    color: Colors.amber,
+                  ),
+                  title: const Text('Rol asignado'),
+                  subtitle: Text(widget.usuario.rol.toUpperCase()),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          FilledButton.icon(
+            onPressed: _cerrarSesion,
+            icon: const Icon(Icons.logout),
+            label: const Text('Cerrar sesión'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
           ),
         ],
       ),
