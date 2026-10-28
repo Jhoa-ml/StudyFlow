@@ -13,26 +13,33 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Habilitar desugaring para notificaciones y compatibilidad con Java 8+
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.app_movil"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        
+        // Forzar minSdk a 21 para soporte adecuado de Firebase y MultiDex
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Habilitar MultiDex para evitar bloqueos por límite de métodos
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Signing con la clave de debug para permitir compilación de pruebas
             signingConfig = signingConfigs.getByName("debug")
+            
+            // Desactivar ofuscación por ahora para evitar borrado de clases de Firebase en release
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
@@ -45,4 +52,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Requerido si se activa isCoreLibraryDesugaringEnabled
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

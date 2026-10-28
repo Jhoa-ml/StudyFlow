@@ -6,25 +6,43 @@ import 'firebase_options.dart';
 import 'screens/login.dart';
 import 'services/notification_service.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  // Habilitar persistencia offline en Firestore
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  );
-
-  // Inicializar notificaciones
-  await NotificationService.init();
-
+  // Levanta la app sin bloquear el frame principal
   runApp(const StudyFlowApp());
 }
 
-class StudyFlowApp extends StatelessWidget {
+class StudyFlowApp extends StatefulWidget {
   const StudyFlowApp({super.key});
+
+  @override
+  State<StudyFlowApp> createState() => _StudyFlowAppState();
+}
+
+class _StudyFlowAppState extends State<StudyFlowApp> {
+  @override
+  void initState() {
+    super.initState();
+    _inicializarServicios();
+  }
+
+  Future<void> _inicializarServicios() async {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+
+      await NotificationService.init();
+    } catch (e) {
+      debugPrint('Error al inicializar servicios: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

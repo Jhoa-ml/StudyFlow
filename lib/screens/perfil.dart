@@ -20,7 +20,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
   int tareasCompletadas = 0;
 
   bool notificaciones = true;
-  String inicioSemana = 'Lunes';
 
   @override
   void initState() {
@@ -204,14 +203,12 @@ class _PerfilScreenState extends State<PerfilScreen> {
                               throw Exception('No hay una sesión activa.');
                             }
 
-                            // 1. Reautenticar con la contraseña actual
                             final credencial = EmailAuthProvider.credential(
                               email: user.email!,
                               password: actual,
                             );
                             await user.reauthenticateWithCredential(credencial);
 
-                            // 2. Actualizar a la nueva contraseña
                             await user.updatePassword(nueva);
 
                             if (!dialogContext.mounted) return;
@@ -286,36 +283,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
     );
   }
 
-  void mostrarInicioSemana() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Inicio de semana'),
-          content: RadioGroup<String>(
-            groupValue: inicioSemana,
-            onChanged: (value) {
-              if (value == null) return;
-
-              setState(() {
-                inicioSemana = value;
-              });
-
-              Navigator.pop(dialogContext);
-            },
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<String>(value: 'Lunes', title: Text('Lunes')),
-                RadioListTile<String>(value: 'Domingo', title: Text('Domingo')),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -373,28 +340,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
                 widget.usuario.correo,
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white54),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF35A8FF).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Estudiante',
-                  style: TextStyle(
-                    color: Color(0xFF35A8FF),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
               ),
             ),
 
@@ -502,7 +447,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                     title: const Text('Nombre'),
                     subtitle: Text(widget.usuario.nombre),
                   ),
-                  const Divider(),
+                  const Divider(height: 1, color: Colors.white10),
                   ListTile(
                     leading: const Icon(
                       Icons.email_outlined,
@@ -510,26 +455,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
                     ),
                     title: const Text('Correo'),
                     subtitle: Text(widget.usuario.correo),
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.school_outlined,
-                      color: Color(0xFF35A8FF),
-                    ),
-                    title: const Text('Rol'),
-                    subtitle: const Text('Estudiante'),
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.badge_outlined,
-                      color: Color(0xFF35A8FF),
-                    ),
-                    title: const Text('ID de Firebase'),
-                    subtitle: Text(
-                      FirebaseAuth.instance.currentUser?.uid ?? 'No disponible',
-                    ),
                   ),
                 ],
               ),
@@ -546,36 +471,19 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
             Card(
               color: const Color(0xFF0B1727),
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    secondary: const Icon(
-                      Icons.notifications_outlined,
-                      color: Color(0xFF35A8FF),
-                    ),
-                    title: const Text('Notificaciones'),
-                    subtitle: Text(
-                      notificaciones ? 'Activadas' : 'Desactivadas',
-                    ),
-                    value: notificaciones,
-                    onChanged: (value) {
-                      setState(() {
-                        notificaciones = value;
-                      });
-                    },
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.calendar_today_outlined,
-                      color: Color(0xFF35A8FF),
-                    ),
-                    title: const Text('Inicio de semana'),
-                    subtitle: Text(inicioSemana),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: mostrarInicioSemana,
-                  ),
-                ],
+              child: SwitchListTile(
+                secondary: const Icon(
+                  Icons.notifications_outlined,
+                  color: Color(0xFF35A8FF),
+                ),
+                title: const Text('Notificaciones'),
+                subtitle: Text(notificaciones ? 'Activadas' : 'Desactivadas'),
+                value: notificaciones,
+                onChanged: (value) {
+                  setState(() {
+                    notificaciones = value;
+                  });
+                },
               ),
             ),
 
